@@ -179,19 +179,19 @@ Opcodes GetFunctionOpcodes(DWORD64 dwFunctionAddress) {
 // It's completely insane, truly, but hey I'm in a damn hurry.
 // Uncomment at your peril
 DWORD64 Native::GetFunctionRoughHash() {
-	/*
-	DWORD64 psuedoHash = 0;
+	DWORD64 pseudoHash = 0;
 
+	/*
 	Opcodes ops = GetFunctionOpcodes(this->func);
 
 	for (auto op : ops.op) {
 		if (op.bytes.size() <= 0)
 			continue; // how
 
-		psuedoHash += op.bytes[0];
+		pseudoHash += op.bytes[0];
 
 		if (op.bytes.size() > 1 && op.bytes[0] == 0x48) {
-			psuedoHash += op.bytes[1];
+			pseudoHash += op.bytes[1];
 		}
 		else if (op.bytes[0] == 0xE8) { // We don't handle JMPs unfortunately, mostly because it can cause serious issues with functions with random JMPs in it
 			DWORD64 dwFunctionCallAddress = (*(int*)(op.addr + 1) + op.addr + 5);
@@ -202,15 +202,13 @@ DWORD64 Native::GetFunctionRoughHash() {
 				if (fop.bytes.size() <= 0)
 					continue; // how
 
-				psuedoHash += fop.bytes[0];
+				pseudoHash += fop.bytes[0];
 			}
 		}
 	}
-
-	return psuedoHash;
 	*/
 
-	return 0;
+	return pseudoHash;
 }
 
 bool isNullStub(eScriptNativeCollectionIndex idx) {
