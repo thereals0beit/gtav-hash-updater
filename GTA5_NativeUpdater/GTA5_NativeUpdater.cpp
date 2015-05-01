@@ -124,8 +124,15 @@ struct Opcodes {
 	std::vector<Opcode> op;
 };
 
+struct Native {
+	DWORD64 hash;
+	DWORD64 func;
+
+	DWORD64 GetFunctionRoughHash();
+};
+
 struct Namespace {
-	std::vector<DWORD64> hashes;
+	std::vector<Native> natives;
 	std::string name;
 };
 
@@ -135,7 +142,18 @@ Opcodes GetFunctionOpcodes(DWORD64 dwFunctionAddress) {
 	Opcodes ret;
 
 	for (UCHAR* pStart = (UCHAR*)dwFunctionAddress;;) {
+		if (pStart[0] == 0xCC)
+			break; // Something else may have happened, lmao
+
 		size_t opcodeSize = LDE(pStart, 64);
+
+		//printf("SIZE: %d\n", opcodeSize);
+		
+		// This needs serious bug fixing
+		if (opcodeSize == -1 || opcodeSize == 0) {
+			//printf("Opcode Error: 0x%X\n", pStart[0]);
+			break;
+		}
 
 		Opcode op;
 		
@@ -155,6 +173,44 @@ Opcodes GetFunctionOpcodes(DWORD64 dwFunctionAddress) {
 	}
 
 	return ret;
+}
+
+// This is a function which can sort of vaguely tell us if a native has changed or not.
+// It's completely insane, truly, but hey I'm in a damn hurry.
+// Uncomment at your peril
+DWORD64 Native::GetFunctionRoughHash() {
+	/*
+	DWORD64 psuedoHash = 0;
+
+	Opcodes ops = GetFunctionOpcodes(this->func);
+
+	for (auto op : ops.op) {
+		if (op.bytes.size() <= 0)
+			continue; // how
+
+		psuedoHash += op.bytes[0];
+
+		if (op.bytes.size() > 1 && op.bytes[0] == 0x48) {
+			psuedoHash += op.bytes[1];
+		}
+		else if (op.bytes[0] == 0xE8) { // We don't handle JMPs unfortunately, mostly because it can cause serious issues with functions with random JMPs in it
+			DWORD64 dwFunctionCallAddress = (*(int*)(op.addr + 1) + op.addr + 5);
+
+			Opcodes funcOps = GetFunctionOpcodes(dwFunctionCallAddress);
+
+			for (auto fop : funcOps.op) {
+				if (fop.bytes.size() <= 0)
+					continue; // how
+
+				psuedoHash += fop.bytes[0];
+			}
+		}
+	}
+
+	return psuedoHash;
+	*/
+
+	return 0;
 }
 
 bool isNullStub(eScriptNativeCollectionIndex idx) {
@@ -182,6 +238,26 @@ std::vector<DWORD64> GetHashesInFunction(DWORD64 dwFunctionStart) {
 	return hashes;
 }
 
+std::vector<Native> GetNativesInFunction(DWORD64 dwFunctionStart) {
+	std::vector<Native> n;
+
+	Opcodes ops = GetFunctionOpcodes(dwFunctionStart);
+
+	for (auto op : ops.op) {
+		// mov rcx, [hash]
+		if (op.bytes.size() > 2 && op.bytes.at(0) == 0x48 && op.bytes.at(1) == 0xB9) {
+			Native nat;
+
+			nat.hash = *(DWORD64*)(op.addr + 2);
+			nat.func = op.addr + *(int*)(op.addr - 4);
+
+			n.push_back(nat);
+		}
+	}
+
+	return n;
+}
+
 std::vector<Namespace> GetNamespaceDataForExe(const char* path) {
 	std::vector<Namespace> ns;
 
@@ -199,7 +275,7 @@ std::vector<Namespace> GetNamespaceDataForExe(const char* path) {
 
 			DWORD64 dwAddressOfAddNatives = dwAddressOfScriptSetup + 0x78;
 
-			dwAddressOfAddNatives = (*(DWORD*)(dwAddressOfAddNatives + 1) + dwAddressOfAddNatives + 5);
+			dwAddressOfAddNatives = (*(int*)(dwAddressOfAddNatives + 1) + dwAddressOfAddNatives + 5);
 
 			//printf("Add Natives: %I64X (%I64X)\n", dwAddressOfAddNatives, (dwAddressOfAddNatives - (DWORD64)hGTA));
 
@@ -214,12 +290,12 @@ std::vector<Namespace> GetNamespaceDataForExe(const char* path) {
 					if (isNullStub((eScriptNativeCollectionIndex)scriptNamespaceIndex))
 						continue;
 
-					DWORD64 dwFunctionCallAddress = (*(DWORD*)(op.addr + 1) + op.addr + 5);
+					DWORD64 dwFunctionCallAddress = (*(int*)(op.addr + 1) + op.addr + 5);
 
 					Namespace n;
 
 					n.name = gNamespaceNames[scriptNamespaceIndex];
-					n.hashes = GetHashesInFunction(dwFunctionCallAddress);
+					n.natives = GetNativesInFunction(dwFunctionCallAddress);
 
 					ns.push_back(n);
 				}
@@ -236,24 +312,6 @@ std::vector<Namespace> GetNamespaceDataForExe(const char* path) {
 	return ns;
 }
 
-void HandleNamespace(eScriptNativeCollectionIndex idx, DWORD64 dwFunctionStart) {
-	if (idx == _NULLSTUB1 || idx == _NULLSTUB2 || idx == _NULLSTUB3 || idx == _NULLSTUB4 || idx == _NULLSTUB5 || idx == _NULLSTUB6) {
-		return; // These are empty
-	}
-
-	printf("%s (%I64X)\n", gNamespaceNames[idx], dwFunctionStart);
-
-	std::vector<DWORD64> hashes = GetHashesInFunction(dwFunctionStart);
-
-	printf("Hash Count: %d\n", hashes.size());
-
-	for (size_t i = 0; i < hashes.size(); i++) {
-		DWORD64 hash = hashes[i];
-
-		printf("%s[%d] = 0x%I64X\n", gNamespaceNames[idx], i, hash);
-	}
-}
-
 int main(int argc, char* argv[]) {
 	if (argc < 2) {
 		printf("Please supply an executable name to use...\n");
@@ -264,10 +322,10 @@ int main(int argc, char* argv[]) {
 		auto namespaces = GetNamespaceDataForExe(argv[1]);
 
 		for (auto ns : namespaces) {
-			printf("%s count = %d\n", ns.name.c_str(), ns.hashes.size());
+			printf("%s count = %d\n", ns.name.c_str(), ns.natives.size());
 
-			for (size_t i = 0; i < ns.hashes.size(); i++) {
-				printf("%s [%d] = 0x%I64X\n", ns.name.c_str(), i, ns.hashes[i]);
+			for (size_t i = 0; i < ns.natives.size(); i++) {
+				printf("%s [%d] = 0x%I64X [0x%I64X] (0x%I64X)\n", ns.name.c_str(), i, ns.natives[i].hash, ns.natives[i].GetFunctionRoughHash(), ns.natives[i].func);
 			}
 
 			printf("------------------\n");
@@ -275,26 +333,6 @@ int main(int argc, char* argv[]) {
 	}
 	else if (argc == 4) { // [old_exe] [new_exe] [natives.h]
 		printf("Not yet supported\n");
-
-		auto namespace1 = GetNamespaceDataForExe(argv[1]);
-		auto namespace2 = GetNamespaceDataForExe(argv[1]);
-
-		if (namespace1.size() != namespace2.size()) {
-			printf("ERROR: Namespace sizes do not match\n");
-			return 0;
-		}
-
-		for (size_t i = 0; i < namespace1.size(); i++) {
-			Namespace n1 = namespace1[i];
-			Namespace n2 = namespace2[i];
-
-			if (n1.hashes.size() != n2.hashes.size()) {
-				printf("WARNING: Hashes for \"%s\" do not match [%d, %d]\n", n1.name.c_str(), n1.hashes.size(), n2.hashes.size());
-				continue;
-			}
-
-			// Rest unsupported for now
-		}
 	}
 
 	return 0;
