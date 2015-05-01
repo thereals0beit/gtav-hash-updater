@@ -157,6 +157,8 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\LICENSE" />
+    <None Include="..\README.md" />
     <None Include="LDE64-x64\LDE64x64.asm" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -18,6 +18,9 @@
     <Filter Include="Header Files\Hashes">
       <UniqueIdentifier>{1f1416ad-fdc5-4a85-87bf-7b6d5eac562f}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Github">
+      <UniqueIdentifier>{f07dbe25-fada-4a5b-bd08-2e1649fc0682}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -53,6 +56,12 @@
   <ItemGroup>
     <None Include="LDE64-x64\LDE64x64.asm">
       <Filter>LDE64-x64</Filter>
+    </None>
+    <None Include="..\LICENSE">
+      <Filter>Github</Filter>
+    </None>
+    <None Include="..\README.md">
+      <Filter>Github</Filter>
     </None>
   </ItemGroup>
 </Project>
