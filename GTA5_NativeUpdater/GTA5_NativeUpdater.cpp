@@ -63,12 +63,6 @@ enum eScriptNativeCollectionIndex
 	MAX
 };
 
-int gNativeCount[] = {
-	17,						// INDEX_APP
-	219,					// INDEX_AUDIO
-	210,					// INDEX_CAM
-};
-
 char* gNamespaceNames[] = {
 	"INDEX_APP",
 	"INDEX_AUDIO",
@@ -130,6 +124,11 @@ struct Opcodes {
 	std::vector<Opcode> op;
 };
 
+struct Namespace {
+	std::vector<DWORD64> hashes;
+	std::string name;
+};
+
 // This will keep going until it hits a JMP or RET
 // It's super basic, but fits our needs
 Opcodes GetFunctionOpcodes(DWORD64 dwFunctionAddress) {
@@ -158,27 +157,88 @@ Opcodes GetFunctionOpcodes(DWORD64 dwFunctionAddress) {
 	return ret;
 }
 
+bool isNullStub(eScriptNativeCollectionIndex idx) {
+	return (
+		idx == _NULLSTUB1 ||
+		idx == _NULLSTUB2 ||
+		idx == _NULLSTUB3 ||
+		idx == _NULLSTUB4 ||
+		idx == _NULLSTUB5 ||
+		idx == _NULLSTUB6);
+}
+
 std::vector<DWORD64> GetHashesInFunction(DWORD64 dwFunctionStart) {
 	std::vector<DWORD64> hashes;
 
 	Opcodes ops = GetFunctionOpcodes(dwFunctionStart);
 
 	for (auto op : ops.op) {
-		if (op.bytes.size() > 2) {
-			if (op.bytes.at(0) == 0x48) {
-				if (op.bytes.at(1) == 0xB9) {
-					hashes.push_back(*(DWORD64*)(op.addr + 2));
-				}
-			}
+		// mov rcx, [hash]
+		if (op.bytes.size() > 2 && op.bytes.at(0) == 0x48 && op.bytes.at(1) == 0xB9) {
+			hashes.push_back(*(DWORD64*)(op.addr + 2));
 		}
 	}
 
 	return hashes;
 }
 
+std::vector<Namespace> GetNamespaceDataForExe(const char* path) {
+	std::vector<Namespace> ns;
+
+	HMODULE hGTA = LoadLibraryA(path);
+
+	MODULEINFO miGTA;
+
+	if (hGTA && GetModuleInformation(GetCurrentProcess(), hGTA, &miGTA, sizeof(MODULEINFO))) {
+		//printf("GTA5: %I64X %I64X\n", miGTA.lpBaseOfDll, miGTA.SizeOfImage);
+
+		DWORD64 dwAddressOfScriptSetup = Pattern::Scan(miGTA, "40 53 48 83 EC 20 83 F9 01 0F 85 A3 00 00 00");
+
+		if (dwAddressOfScriptSetup != 0) {
+			//printf("Script Setup: %I64X (%I64X)\n", dwAddressOfScriptSetup, (dwAddressOfScriptSetup - (DWORD64)hGTA));
+
+			DWORD64 dwAddressOfAddNatives = dwAddressOfScriptSetup + 0x78;
+
+			dwAddressOfAddNatives = (*(DWORD*)(dwAddressOfAddNatives + 1) + dwAddressOfAddNatives + 5);
+
+			//printf("Add Natives: %I64X (%I64X)\n", dwAddressOfAddNatives, (dwAddressOfAddNatives - (DWORD64)hGTA));
+
+			int scriptNamespaceIndex = -1;
+
+			Opcodes ops = GetFunctionOpcodes(dwAddressOfAddNatives);
+
+			for (auto op : ops.op) {
+				if (op.bytes.data()[0] == 0xE8 || op.bytes.data()[0] == 0xE9) { // CALL || JMP
+					scriptNamespaceIndex++; // We're in the namespace
+
+					if (isNullStub((eScriptNativeCollectionIndex)scriptNamespaceIndex))
+						continue;
+
+					DWORD64 dwFunctionCallAddress = (*(DWORD*)(op.addr + 1) + op.addr + 5);
+
+					Namespace n;
+
+					n.name = gNamespaceNames[scriptNamespaceIndex];
+					n.hashes = GetHashesInFunction(dwFunctionCallAddress);
+
+					ns.push_back(n);
+				}
+			}
+		}
+		else {
+			printf("WARNING: Unable to find Script Setup pattern on file \"%s\"\n");
+		}
+	}
+	else {
+		printf("Failed LoadLibrary on \"%s\"\n", path);
+	}
+
+	return ns;
+}
+
 void HandleNamespace(eScriptNativeCollectionIndex idx, DWORD64 dwFunctionStart) {
-	if (idx == _NULLSTUB1 || idx == _NULLSTUB2) {
-		return; // Nope
+	if (idx == _NULLSTUB1 || idx == _NULLSTUB2 || idx == _NULLSTUB3 || idx == _NULLSTUB4 || idx == _NULLSTUB5 || idx == _NULLSTUB6) {
+		return; // These are empty
 	}
 
 	printf("%s (%I64X)\n", gNamespaceNames[idx], dwFunctionStart);
@@ -200,55 +260,41 @@ int main(int argc, char* argv[]) {
 		return 0;
 	}
 
-	char* pszFileName = argv[1];
+	if (argc == 2) { // [exe]
+		auto namespaces = GetNamespaceDataForExe(argv[1]);
 
-	printf("Using File: %s\n", pszFileName);
+		for (auto ns : namespaces) {
+			printf("%s count = %d\n", ns.name.c_str(), ns.hashes.size());
 
-	HMODULE hGTA = LoadLibraryA(pszFileName);
-
-	MODULEINFO miGTA;
-
-	if (hGTA && GetModuleInformation(GetCurrentProcess(), hGTA, &miGTA, sizeof(MODULEINFO))) {
-		printf("GTA5: %I64X %I64X\n", miGTA.lpBaseOfDll, miGTA.SizeOfImage);
-
-		DWORD64 dwAddressOfScriptSetup = Pattern::Scan(miGTA, "40 53 48 83 EC 20 83 F9 01 0F 85 A3 00 00 00");
-
-		if (dwAddressOfScriptSetup != 0) {
-			printf("Script Setup: %I64X (%I64X)\n", dwAddressOfScriptSetup, (dwAddressOfScriptSetup - (DWORD64)hGTA));
-
-			DWORD64 dwAddressOfAddNatives = dwAddressOfScriptSetup + 0x78;
-
-			dwAddressOfAddNatives = (*(DWORD*)(dwAddressOfAddNatives + 1) + dwAddressOfAddNatives + 5);
-
-			printf("Add Natives: %I64X (%I64X)\n", dwAddressOfAddNatives, (dwAddressOfAddNatives - (DWORD64)hGTA));
-
-			int scriptNamespaceIndex = -1;
-
-			Opcodes ops = GetFunctionOpcodes(dwAddressOfAddNatives);
-
-			for (auto op : ops.op) {
-				if (op.bytes.data()[0] == 0xE8) { // CALL
-					scriptNamespaceIndex++; // We're in the namespace
-
-					DWORD64 dwFunctionCallAddress = (*(DWORD*)(op.addr + 1) + op.addr + 5);
-
-					HandleNamespace((eScriptNativeCollectionIndex)scriptNamespaceIndex, dwFunctionCallAddress);
-				}
-				else if (op.bytes.data()[0] == 0xE9) { // JMP
-					scriptNamespaceIndex++; // We're in the namespace
-
-					// get jmp dest and do this one too why not
-
-					break;
-				}
+			for (size_t i = 0; i < ns.hashes.size(); i++) {
+				printf("%s [%d] = 0x%I64X\n", ns.name.c_str(), i, ns.hashes[i]);
 			}
-		}
-		else {
-			printf("Unable to find Script Setup pattern.\n");
+
+			printf("------------------\n");
 		}
 	}
-	else {
-		printf("Failed LoadLibrary on \"%s\" (No File?)\n", pszFileName);
+	else if (argc == 4) { // [old_exe] [new_exe] [natives.h]
+		printf("Not yet supported\n");
+
+		auto namespace1 = GetNamespaceDataForExe(argv[1]);
+		auto namespace2 = GetNamespaceDataForExe(argv[1]);
+
+		if (namespace1.size() != namespace2.size()) {
+			printf("ERROR: Namespace sizes do not match\n");
+			return 0;
+		}
+
+		for (size_t i = 0; i < namespace1.size(); i++) {
+			Namespace n1 = namespace1[i];
+			Namespace n2 = namespace2[i];
+
+			if (n1.hashes.size() != n2.hashes.size()) {
+				printf("WARNING: Hashes for \"%s\" do not match [%d, %d]\n", n1.name.c_str(), n1.hashes.size(), n2.hashes.size());
+				continue;
+			}
+
+			// Rest unsupported for now
+		}
 	}
 
 	return 0;

@@ -13,6 +13,7 @@
 #include <string>
 #include <sstream>
 #include <vector>
+#include <hash_map>
 #include <Psapi.h>
 
 #pragma comment(lib, "Psapi.lib")
@@ -22,7 +23,3 @@
 #include "types.h"
 #include "LDE.h"
 #include "Pattern.h"
-
-//
-#include "CACHE_HASH.h"
-#include "PLAYER_HASHES.h"

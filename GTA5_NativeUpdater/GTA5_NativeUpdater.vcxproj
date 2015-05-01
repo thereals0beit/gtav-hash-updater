@@ -139,10 +139,8 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="CACHE_HASH.h" />
     <ClInclude Include="LDE.h" />
     <ClInclude Include="Pattern.h" />
-    <ClInclude Include="PLAYER_HASHES.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="types.h" />

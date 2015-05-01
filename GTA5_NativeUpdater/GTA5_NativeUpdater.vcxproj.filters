@@ -15,9 +15,6 @@
     <Filter Include="Header Files\Common">
       <UniqueIdentifier>{a4bcea37-e507-4fc9-b805-143801898977}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\Hashes">
-      <UniqueIdentifier>{1f1416ad-fdc5-4a85-87bf-7b6d5eac562f}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Github">
       <UniqueIdentifier>{f07dbe25-fada-4a5b-bd08-2e1649fc0682}</UniqueIdentifier>
     </Filter>
@@ -37,12 +34,6 @@
     </ClInclude>
     <ClInclude Include="types.h">
       <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="PLAYER_HASHES.h">
-      <Filter>Header Files\Hashes</Filter>
-    </ClInclude>
-    <ClInclude Include="CACHE_HASH.h">
-      <Filter>Header Files\Hashes</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
